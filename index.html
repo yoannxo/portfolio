@@ -632,14 +632,15 @@
     overflow-y:hidden;
     scroll-snap-type:x mandatory;
     -webkit-overflow-scrolling:touch;
-    gap:2px;
+    gap:0;
     background:var(--crow-black);
   }
   .lightbox-media.gallery::-webkit-scrollbar{height:6px;}
   .lightbox-media.gallery::-webkit-scrollbar-thumb{background:var(--hinata-orange);border-radius:4px;}
   .lightbox-media.gallery img{
+    display:block;
     position:static;
-    scroll-snap-align:center;
+    scroll-snap-align:start;
     flex:0 0 100%;
     width:100%;
     height:100%;
