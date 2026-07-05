@@ -614,40 +614,34 @@
     position:relative;
     border:1px solid rgba(255,199,56,0.25);
   }
+  .lightbox-media-wrap{
+    position:relative;
+  }
   .lightbox-media{
     aspect-ratio:16/10;
     background:repeating-linear-gradient(135deg, rgba(255,107,44,0.08) 0px, rgba(255,107,44,0.08) 2px, transparent 2px, transparent 14px), var(--crow-black);
     display:flex;align-items:center;justify-content:center;
     position:relative;
+    overflow:hidden;
   }
   .lightbox-media img, .lightbox-media video{
     position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
   }
   .lightbox-media.gallery{
     aspect-ratio:auto;
-    height:min(65vh, 560px);
-    display:flex;
-    flex-direction:row;
-    overflow-x:auto;
-    overflow-y:hidden;
-    overflow-anchor:none;
-    scroll-snap-type:x mandatory;
-    -webkit-overflow-scrolling:touch;
-    gap:0;
+    height:auto;
+    max-height:70vh;
     background:var(--crow-black);
   }
-  .lightbox-media.gallery::-webkit-scrollbar{height:6px;}
-  .lightbox-media.gallery::-webkit-scrollbar-thumb{background:var(--hinata-orange);border-radius:4px;}
   .lightbox-media.gallery img{
-    display:block;
     position:static;
-    scroll-snap-align:start;
-    scroll-snap-stop:always;
-    flex:0 0 100%;
-    width:100%;
-    height:100%;
-    object-fit:cover;
-    overflow-anchor:none;
+    display:block;
+    width:auto;
+    height:auto;
+    max-width:100%;
+    max-height:70vh;
+    object-fit:contain;
+    margin:0 auto;
   }
   .lightbox-nav{
     position:absolute;
@@ -1571,10 +1565,12 @@
 <div class="lightbox-overlay" id="lightboxOverlay">
   <div class="lightbox-card" id="lightboxCard">
     <button class="lightbox-close" id="lightboxClose" aria-label="Close">✕</button>
-    <button class="lightbox-nav prev" id="lightboxPrev" aria-label="Previous page">←</button>
-    <button class="lightbox-nav next" id="lightboxNext" aria-label="Next page">→</button>
-    <div class="lightbox-media" id="lightboxMedia"><span class="plus">+</span></div>
-    <span class="lightbox-page-count" id="lightboxPageCount"></span>
+    <div class="lightbox-media-wrap">
+      <button class="lightbox-nav prev" id="lightboxPrev" aria-label="Previous page">←</button>
+      <button class="lightbox-nav next" id="lightboxNext" aria-label="Next page">→</button>
+      <div class="lightbox-media" id="lightboxMedia"><span class="plus">+</span></div>
+      <span class="lightbox-page-count" id="lightboxPageCount"></span>
+    </div>
     <div class="lightbox-body">
       <span class="lightbox-tag" id="lightboxTag"></span>
       <h3 class="lightbox-title" id="lightboxTitle"></h3>
@@ -1646,44 +1642,54 @@
   const lbPrev = document.getElementById('lightboxPrev');
   const lbNext = document.getElementById('lightboxNext');
   const lbPageCount = document.getElementById('lightboxPageCount');
-  let lbPageTotal = 0;
+  let lbGallery = [];
+  let lbIndex = 0;
+  let lbAltText = '';
 
-  function updateLbPageCount(){
-    if(lbPageTotal <= 1){ lbPageCount.textContent = ''; return; }
-    const w = lbMedia.clientWidth || 1;
-    const page = Math.round(lbMedia.scrollLeft / w) + 1;
-    lbPageCount.textContent = page + ' / ' + lbPageTotal;
+  function renderLbPage(){
+    lbMedia.innerHTML = '';
+    if(lbGallery.length === 0) return;
+    const img = document.createElement('img');
+    img.src = lbGallery[lbIndex];
+    img.alt = lbAltText;
+    lbMedia.appendChild(img);
+    lbPageCount.textContent = lbGallery.length > 1 ? (lbIndex + 1) + ' / ' + lbGallery.length : '';
+  }
+
+  function goToPage(dir){
+    if(lbGallery.length === 0) return;
+    lbIndex = (lbIndex + dir + lbGallery.length) % lbGallery.length;
+    renderLbPage();
   }
 
   function openLightbox(slide){
     lbTag.textContent = slide.dataset.tag || '';
     lbTitle.textContent = slide.dataset.title || '';
     lbDetail.textContent = slide.dataset.detail || '';
+    lbAltText = slide.dataset.title || '';
 
-    lbMedia.innerHTML = '';
-    lbPageTotal = 0;
+    lbGallery = [];
+    lbIndex = 0;
 
-    // Multi-page pieces: data-gallery is a JSON array of image paths — scroll left/right through them
+    // Multi-page pieces: data-gallery is a JSON array of image paths — click arrows to flip through them, one at a time
     if(slide.dataset.gallery){
-      lbMedia.classList.add('gallery');
-      lightboxCard.classList.add('has-gallery');
       try{
-        const images = JSON.parse(slide.dataset.gallery);
-        lbPageTotal = images.length;
-        images.forEach(src => {
-          const img = document.createElement('img');
-          img.src = src;
-          img.alt = slide.dataset.title || '';
-          lbMedia.appendChild(img);
-        });
+        lbGallery = JSON.parse(slide.dataset.gallery);
       } catch(e){
-        lbMedia.innerHTML = '<span class="plus">+</span>';
-        lightboxCard.classList.remove('has-gallery');
+        lbGallery = [];
       }
+    }
+
+    if(lbGallery.length > 0){
+      lightboxCard.classList.add('has-gallery');
+      lbMedia.classList.add('gallery');
+      renderLbPage();
     } else {
-      lbMedia.classList.remove('gallery');
       lightboxCard.classList.remove('has-gallery');
+      lbMedia.classList.remove('gallery');
+      lbPageCount.textContent = '';
       // If the slide has a real <img> or <video>, clone it into the lightbox; otherwise show placeholder
+      lbMedia.innerHTML = '';
       const media = slide.querySelector('img, video');
       if(media){
         const clone = media.cloneNode(true);
@@ -1694,28 +1700,14 @@
       }
     }
 
-    lbMedia.scrollLeft = 0;
-    updateLbPageCount();
     lightbox.classList.add('open');
     document.body.style.overflow = 'hidden';
     lbClose.focus();
-
-    // Extra insurance against browser scroll-anchoring drift while images load
-    requestAnimationFrame(() => {
-      lbMedia.scrollLeft = 0;
-      updateLbPageCount();
-      setTimeout(() => { lbMedia.scrollLeft = 0; updateLbPageCount(); }, 120);
-    });
   }
 
   function closeLightbox(){
     lightbox.classList.remove('open');
     document.body.style.overflow = '';
-  }
-
-  function lbScrollByPage(dir){
-    const w = lbMedia.clientWidth;
-    lbMedia.scrollBy({left: w * dir, behavior:'smooth'});
   }
 
   document.querySelectorAll('.slide').forEach(slide => {
@@ -1728,9 +1720,8 @@
     });
   });
 
-  lbPrev.addEventListener('click', () => lbScrollByPage(-1));
-  lbNext.addEventListener('click', () => lbScrollByPage(1));
-  lbMedia.addEventListener('scroll', updateLbPageCount, {passive:true});
+  lbPrev.addEventListener('click', () => goToPage(-1));
+  lbNext.addEventListener('click', () => goToPage(1));
 
   lbClose.addEventListener('click', closeLightbox);
   lightbox.addEventListener('click', (e) => {
@@ -1739,8 +1730,8 @@
   document.addEventListener('keydown', (e) => {
     if(!lightbox.classList.contains('open')) return;
     if(e.key === 'Escape') closeLightbox();
-    if(e.key === 'ArrowRight' && lightboxCard.classList.contains('has-gallery')) lbScrollByPage(1);
-    if(e.key === 'ArrowLeft' && lightboxCard.classList.contains('has-gallery')) lbScrollByPage(-1);
+    if(e.key === 'ArrowRight' && lightboxCard.classList.contains('has-gallery')) goToPage(1);
+    if(e.key === 'ArrowLeft' && lightboxCard.classList.contains('has-gallery')) goToPage(-1);
   });
 
   document.getElementById('year').textContent = new Date().getFullYear();
