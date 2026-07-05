@@ -625,17 +625,61 @@
   }
   .lightbox-media.gallery{
     aspect-ratio:auto;
+    height:min(65vh, 560px);
     display:flex;
-    flex-direction:column;
+    flex-direction:row;
+    overflow-x:auto;
+    overflow-y:hidden;
+    scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;
     gap:2px;
     background:var(--crow-black);
   }
+  .lightbox-media.gallery::-webkit-scrollbar{height:6px;}
+  .lightbox-media.gallery::-webkit-scrollbar-thumb{background:var(--hinata-orange);border-radius:4px;}
   .lightbox-media.gallery img{
     position:static;
+    scroll-snap-align:center;
+    flex:0 0 100%;
     width:100%;
-    height:auto;
+    height:100%;
     object-fit:contain;
   }
+  .lightbox-nav{
+    position:absolute;
+    top:50%;
+    transform:translateY(-50%);
+    width:40px;height:40px;
+    border-radius:50%;
+    border:none;
+    background:rgba(0,0,0,0.45);
+    color:var(--court-cream);
+    font-size:16px;
+    cursor:pointer;
+    z-index:3;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    transition:background 0.2s ease;
+  }
+  .lightbox-nav:hover{background:var(--hinata-orange);}
+  .lightbox-nav.prev{left:12px;}
+  .lightbox-nav.next{right:12px;}
+  .lightbox-card.has-gallery .lightbox-nav{display:flex;}
+  .lightbox-page-count{
+    position:absolute;
+    bottom:12px;left:50%;
+    transform:translateX(-50%);
+    background:rgba(0,0,0,0.5);
+    color:var(--court-cream);
+    font-family:var(--font-mono);
+    font-size:11px;
+    padding:4px 10px;
+    border-radius:12px;
+    z-index:3;
+    display:none;
+  }
+  .lightbox-card.has-gallery .lightbox-page-count{display:block;}
   .lightbox-media .plus{
     font-family:var(--font-display);font-size:2.6rem;color:rgba(255,199,56,0.35);
   }
@@ -1521,9 +1565,12 @@
 </footer>
 
 <div class="lightbox-overlay" id="lightboxOverlay">
-  <div class="lightbox-card">
+  <div class="lightbox-card" id="lightboxCard">
     <button class="lightbox-close" id="lightboxClose" aria-label="Close">✕</button>
+    <button class="lightbox-nav prev" id="lightboxPrev" aria-label="Previous page">←</button>
+    <button class="lightbox-nav next" id="lightboxNext" aria-label="Next page">→</button>
     <div class="lightbox-media" id="lightboxMedia"><span class="plus">+</span></div>
+    <span class="lightbox-page-count" id="lightboxPageCount"></span>
     <div class="lightbox-body">
       <span class="lightbox-tag" id="lightboxTag"></span>
       <h3 class="lightbox-title" id="lightboxTitle"></h3>
@@ -1586,11 +1633,23 @@
 
   // Lightbox — click/tap/enter a work slide to expand it
   const lightbox = document.getElementById('lightboxOverlay');
+  const lightboxCard = document.getElementById('lightboxCard');
   const lbMedia = document.getElementById('lightboxMedia');
   const lbTag = document.getElementById('lightboxTag');
   const lbTitle = document.getElementById('lightboxTitle');
   const lbDetail = document.getElementById('lightboxDetail');
   const lbClose = document.getElementById('lightboxClose');
+  const lbPrev = document.getElementById('lightboxPrev');
+  const lbNext = document.getElementById('lightboxNext');
+  const lbPageCount = document.getElementById('lightboxPageCount');
+  let lbPageTotal = 0;
+
+  function updateLbPageCount(){
+    if(lbPageTotal <= 1){ lbPageCount.textContent = ''; return; }
+    const w = lbMedia.clientWidth || 1;
+    const page = Math.round(lbMedia.scrollLeft / w) + 1;
+    lbPageCount.textContent = page + ' / ' + lbPageTotal;
+  }
 
   function openLightbox(slide){
     lbTag.textContent = slide.dataset.tag || '';
@@ -1598,12 +1657,15 @@
     lbDetail.textContent = slide.dataset.detail || '';
 
     lbMedia.innerHTML = '';
+    lbPageTotal = 0;
 
-    // Multi-page pieces: data-gallery is a JSON array of image paths — render as a scrollable stack
+    // Multi-page pieces: data-gallery is a JSON array of image paths — scroll left/right through them
     if(slide.dataset.gallery){
       lbMedia.classList.add('gallery');
+      lightboxCard.classList.add('has-gallery');
       try{
         const images = JSON.parse(slide.dataset.gallery);
+        lbPageTotal = images.length;
         images.forEach(src => {
           const img = document.createElement('img');
           img.src = src;
@@ -1612,9 +1674,11 @@
         });
       } catch(e){
         lbMedia.innerHTML = '<span class="plus">+</span>';
+        lightboxCard.classList.remove('has-gallery');
       }
     } else {
       lbMedia.classList.remove('gallery');
+      lightboxCard.classList.remove('has-gallery');
       // If the slide has a real <img> or <video>, clone it into the lightbox; otherwise show placeholder
       const media = slide.querySelector('img, video');
       if(media){
@@ -1626,6 +1690,8 @@
       }
     }
 
+    lbMedia.scrollLeft = 0;
+    updateLbPageCount();
     lightbox.classList.add('open');
     document.body.style.overflow = 'hidden';
     lbClose.focus();
@@ -1634,6 +1700,11 @@
   function closeLightbox(){
     lightbox.classList.remove('open');
     document.body.style.overflow = '';
+  }
+
+  function lbScrollByPage(dir){
+    const w = lbMedia.clientWidth;
+    lbMedia.scrollBy({left: w * dir, behavior:'smooth'});
   }
 
   document.querySelectorAll('.slide').forEach(slide => {
@@ -1646,12 +1717,19 @@
     });
   });
 
+  lbPrev.addEventListener('click', () => lbScrollByPage(-1));
+  lbNext.addEventListener('click', () => lbScrollByPage(1));
+  lbMedia.addEventListener('scroll', updateLbPageCount, {passive:true});
+
   lbClose.addEventListener('click', closeLightbox);
   lightbox.addEventListener('click', (e) => {
     if(e.target === lightbox) closeLightbox();
   });
   document.addEventListener('keydown', (e) => {
-    if(e.key === 'Escape' && lightbox.classList.contains('open')) closeLightbox();
+    if(!lightbox.classList.contains('open')) return;
+    if(e.key === 'Escape') closeLightbox();
+    if(e.key === 'ArrowRight' && lightboxCard.classList.contains('has-gallery')) lbScrollByPage(1);
+    if(e.key === 'ArrowLeft' && lightboxCard.classList.contains('has-gallery')) lbScrollByPage(-1);
   });
 
   document.getElementById('year').textContent = new Date().getFullYear();
